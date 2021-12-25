@@ -236,9 +236,11 @@ static void initialize_console(void)
     setvbuf(stdin, NULL, _IONBF, 0);
 
     /* Minicom, screen, idf_monitor send CR when ENTER key is pressed */
-    esp_vfs_dev_uart_set_rx_line_endings(ESP_LINE_ENDINGS_CR);
+    esp_vfs_dev_uart_port_set_rx_line_endings(CONFIG_ESP_CONSOLE_UART_NUM,
+                                              ESP_LINE_ENDINGS_CR);
     /* Move the caret to the beginning of the next line on '\n' */
-    esp_vfs_dev_uart_set_tx_line_endings(ESP_LINE_ENDINGS_CRLF);
+    esp_vfs_dev_uart_port_set_tx_line_endings(CONFIG_ESP_CONSOLE_UART_NUM,
+                                              ESP_LINE_ENDINGS_CRLF);
 
     /* Configure UART. Note that REF_TICK is used so that the baud rate remains
      * correct while APB frequency is changing in light sleep mode.
@@ -308,18 +310,21 @@ void * led_status_thread(void * p)
     }
 }
 
-static esp_err_t wifi_event_handler(void *ctx, system_event_t *event)
+static void wifi_event_handler(void* arg, esp_event_base_t event_base,
+                                int32_t event_id, void* event_data)
 {
   esp_netif_dns_info_t dns;
 
-  switch(event->event_id) {
+  switch(event_id) {
     case SYSTEM_EVENT_STA_START:
         esp_wifi_connect();
         break;
     case SYSTEM_EVENT_STA_GOT_IP:
         ap_connect = true;
-        ESP_LOGI(TAG, "got ip:" IPSTR, IP2STR(&event->event_info.got_ip.ip_info.ip));
-        my_ip = event->event_info.got_ip.ip_info.ip.addr;
+		ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;	
+        ESP_LOGI(TAG, "got ip:" IPSTR, IP2STR(&event->ip_info.ip));
+																   
+        my_ip = event->ip_info.ip.addr;
         if (esp_netif_get_dns_info(wifiSTA, ESP_NETIF_DNS_MAIN, &dns) == ESP_OK) {
             dhcps_dns_setserver((const ip_addr_t *)&dns.ip);
             ESP_LOGI(TAG, "set dns to:" IPSTR, IP2STR(&dns.ip.u_addr.ip4));
@@ -347,7 +352,7 @@ static esp_err_t wifi_event_handler(void *ctx, system_event_t *event)
     default:
         break;
   }
-  return ESP_OK;
+				
 }
 
 const int CONNECTED_BIT = BIT0;
@@ -386,7 +391,7 @@ void wifi_init(const char* ssid, const char* passwd, const char* static_ip, cons
     esp_netif_set_ip_info(wifiAP, &ipInfo_ap);
     esp_netif_dhcps_start(wifiAP);
 
-    ESP_ERROR_CHECK(esp_event_loop_init(wifi_event_handler, NULL) );
+	ESP_ERROR_CHECK( esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL) );    																											
 
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
